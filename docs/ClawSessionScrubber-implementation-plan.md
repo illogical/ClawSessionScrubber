@@ -121,21 +121,56 @@ console.log(`ClawSessionScrubber running at http://localhost:${PORT}`);
 
 Path: `<DATA_DIR>/agents/<agentName>/sessions/sessions.json`
 
-Relevant fields per entry:
+**IMPORTANT — actual format:** `sessions.json` is a **single JSON object**, NOT an array. Each key is an agent-scoped identifier (e.g. `"agent:main:main"`). Parse with `Object.values()` or `Object.entries()`. The agent name can be derived from the parent directory path (`agents/<agentName>/sessions/`).
 
 ```ts
+// sessions.json top-level shape:
+// { [agentKey: string]: SessionMeta }
+// e.g. { "agent:main:main": { sessionId: "...", ... } }
+
 interface SessionMeta {
   sessionId: string;
   updatedAt: number;       // Unix ms timestamp
   sessionFile: string;     // absolute path to .jsonl
-  chatType: string;
-  origin: { label: string; from: string };
+  chatType: string;        // e.g. "direct"
+  origin: {
+    label: string;         // e.g. "heartbeat"
+    from: string;
+    to: string;
+    provider?: string;
+  };
+  // additional fields present but not needed for the UI:
+  // systemSent, abortedLastRun, deliveryContext, compactionCount, skillsSnapshot
+}
+```
+
+Concrete example (truncated):
+```json
+{
+  "agent:main:main": {
+    "sessionId": "ab9b55c4-f540-4587-ab94-72b63b29147c",
+    "updatedAt": 1773538952929,
+    "chatType": "direct",
+    "origin": { "label": "heartbeat", "from": "heartbeat", "to": "heartbeat" },
+    "sessionFile": "/Users/molt/.openclaw/agents/main/sessions/ab9b55c4-f540-4587-ab94-72b63b29147c.jsonl"
+  }
 }
 ```
 
 ### 6.2 Source: `.jsonl` files
 
 One JSON object per line. Each line has at minimum `{ type, id, parentId, timestamp }`.
+
+**File naming patterns in the wild — the scanner MUST handle all of these:**
+
+| Pattern | Example | Include? |
+|---|---|---|
+| `<uuid>.jsonl` | `5aa69cdb-42d7-48df-9377-3887a4cff539.jsonl` | ✅ yes |
+| `<timestamp>_<uuid>.jsonl` | `2026-02-28T02-49-37-632Z_11c7893e-8105-4237-88c7-1fc1290da0e0.jsonl` | ✅ yes |
+| `<uuid>.jsonl.reset.<timestamp>` | `6a0024e5-3ec1-495d-a77e-67107cd5a699.jsonl.reset.2026-02-26T00-44-15.879Z` | ❌ skip |
+| `<uuid>.jsonl.deleted.<timestamp>` | `70e74ac1-b83e-45c8-9103-de0ed7fe757c.jsonl.deleted.2026-03-14T23-42-00.310Z` | ❌ skip |
+
+**Rule:** only include files whose name ends with `.jsonl` (i.e. `filename.endsWith('.jsonl')`). Files with `.reset.*` or `.deleted.*` suffixes are archived copies and must be skipped.
 
 **Line types:**
 
@@ -144,18 +179,93 @@ type RawLine =
   | SessionStartLine       // type: "session"
   | ModelChangeLine        // type: "model_change"
   | ThinkingLevelLine      // type: "thinking_level_change"
-  | CustomLine             // type: "custom"
+  | CustomLine             // type: "custom", has customType + data fields
   | MessageLine;           // type: "message", message.role: "user" | "assistant" | "toolResult"
 ```
+
+**`user` message line shape:**
+```json
+{
+  "type": "message",
+  "id": "813a837d",
+  "parentId": "431dc59d",
+  "timestamp": "2026-02-25T05:18:55.858Z",
+  "message": {
+    "role": "user",
+    "content": [{ "type": "text", "text": "..." }],
+    "timestamp": 1771996735857
+  }
+}
+```
+
+**`assistant` message line shape** — `api`, `provider`, `model`, `usage`, `stopReason` are **top-level on `message`**, not nested in a `meta` object:
+```json
+{
+  "type": "message",
+  "id": "dd433acd",
+  "parentId": "813a837d",
+  "timestamp": "2026-02-25T05:19:12.471Z",
+  "message": {
+    "role": "assistant",
+    "content": [
+      { "type": "thinking", "thinking": "...", "thinkingSignature": "c2a2f355..." },
+      { "type": "toolCall", "id": "call_function_h2qhff6fkoax_1", "name": "exec", "arguments": { "command": "..." } }
+    ],
+    "api": "anthropic-messages",
+    "provider": "opencode",
+    "model": "minimax-m2.5-free",
+    "usage": {
+      "input": 28,
+      "output": 167,
+      "cacheRead": 5869,
+      "cacheWrite": 10583,
+      "totalTokens": 16647,
+      "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0 }
+    },
+    "stopReason": "toolUse",
+    "timestamp": 1771996735858
+  }
+}
+```
+
+**`toolResult` message line shape** — `toolCallId`, `toolName`, `isError` are **top-level on `message`** (not inside content). A `details` block provides execution metadata:
+```json
+{
+  "type": "message",
+  "id": "e0f1c758",
+  "parentId": "dd433acd",
+  "timestamp": "2026-02-25T05:19:12.544Z",
+  "message": {
+    "role": "toolResult",
+    "toolCallId": "call_function_h2qhff6fkoax_1",
+    "toolName": "exec",
+    "content": [{ "type": "text", "text": "jq: error..." }],
+    "details": {
+      "status": "completed",
+      "exitCode": 5,
+      "durationMs": 47,
+      "aggregated": "jq: error...",
+      "cwd": "/Users/molt/.openclaw/workspace"
+    },
+    "isError": false,
+    "timestamp": 1771996752542
+  }
+}
+```
+
+**Notes on `thinking` blocks:**
+- `thinkingSignature` is a hex hash string OR the literal string `"reasoning"` — treat it as an opaque string
+- Multiple `thinking` and `text` blocks can be **interleaved** in a single `assistant` message content array (e.g. `[thinking, toolCall]` or `[thinking, text, thinking, text]`)
 
 **Content block types in `message.content[]`:**
 
 ```ts
 type ContentBlock =
-  | { type: "text";       text: string }
-  | { type: "thinking";   thinking: string; thinkingSignature: string }
-  | { type: "toolCall";   id: string; name: string; arguments: Record<string, unknown> }
-  | { type: "toolResult"; toolCallId: string; content: ContentBlock[] };
+  | { type: "text";     text: string }
+  | { type: "thinking"; thinking: string; thinkingSignature: string }
+  | { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> };
+// Note: "toolResult" is NOT a content block type — it is a top-level message role.
+// The content[] of a toolResult message contains text blocks with the tool output.
 ```
 
 ### 6.3 Normalised `ParsedMessage` (`lib/types.ts`)
@@ -168,17 +278,32 @@ interface ParsedMessage {
   timestamp: string;
   kind: "user" | "assistant" | "toolResult" | "system";
   content: ContentBlock[];
-  hasThinking: boolean;    // precomputed — any content block is type "thinking"
-  hasToolCall: boolean;    // precomputed — any content block is type "toolCall"
+  hasThinking: boolean;    // precomputed — any content block has type "thinking"
+  hasToolCall: boolean;    // precomputed — any content block has type "toolCall"
   meta?: {
-    model?: string;
-    provider?: string;
-    usage?: { inputTokens: number; outputTokens: number };
-    stopReason?: string;
+    // Sourced from top-level fields on message object (NOT a nested meta object in source)
+    model?: string;        // message.model
+    provider?: string;     // message.provider
+    api?: string;          // message.api  e.g. "anthropic-messages" | "openai-completions"
+    usage?: {
+      input?: number;      // message.usage.input
+      output?: number;     // message.usage.output
+      cacheRead?: number;
+      cacheWrite?: number;
+      totalTokens?: number;
+    };
+    stopReason?: string;   // message.stopReason  e.g. "toolUse" | "stop"
   };
-  toolName?: string;
-  toolCallId?: string;
-  isError?: boolean;
+  // toolResult-specific (sourced from top-level message fields):
+  toolName?: string;       // message.toolName
+  toolCallId?: string;     // message.toolCallId
+  isError?: boolean;       // message.isError
+  details?: {              // message.details — execution metadata for tool calls
+    status?: string;
+    exitCode?: number;
+    durationMs?: number;
+    cwd?: string;
+  };
   raw: Record<string, unknown>;
 }
 ```
@@ -585,3 +710,75 @@ Uses `Bun.fetch` against the running test server (started in `beforeAll`, torn d
 | `selectionHelpers.ts` as pure functions | Fully unit-testable without DOM |
 | `OPENCLAW_DATA_DIR` server-only | Session data never sent to any third party |
 | Port 17109 | Required per spec |
+
+---
+
+## 16. Appendix: Concrete `.jsonl` Examples (from real sample files)
+
+These are verbatim lines from the sample sessions. Use these as test fixtures and as the ground truth for the parser.
+
+### Session start line
+```json
+{"type":"session","version":3,"id":"5aa69cdb-42d7-48df-9377-3887a4cff539","timestamp":"2026-02-25T05:18:55.852Z","cwd":"/Users/molt/.openclaw/workspace"}
+```
+
+### Model change line
+```json
+{"type":"model_change","id":"ebdf0119","parentId":null,"timestamp":"2026-02-25T05:18:55.853Z","provider":"opencode","modelId":"minimax-m2.5-free"}
+```
+
+### Thinking level change line
+```json
+{"type":"thinking_level_change","id":"ef0ca283","parentId":"ebdf0119","timestamp":"2026-02-25T05:18:55.853Z","thinkingLevel":"low"}
+```
+
+### Custom line
+```json
+{"type":"custom","customType":"model-snapshot","data":{"timestamp":1771996735854,"provider":"opencode","modelApi":"anthropic-messages","modelId":"minimax-m2.5-free"},"id":"431dc59d","parentId":"ef0ca283","timestamp":"2026-02-25T05:18:55.854Z"}
+```
+
+### User message line
+```json
+{"type":"message","id":"813a837d","parentId":"431dc59d","timestamp":"2026-02-25T05:18:55.858Z","message":{"role":"user","content":[{"type":"text","text":"On the board named DevPlanner, are you capable of moving DE-16 to make it the top priority?"}],"timestamp":1771996735857}}
+```
+
+### Assistant message with thinking + toolCall
+```json
+{"type":"message","id":"dd433acd","parentId":"813a837d","timestamp":"2026-02-25T05:19:12.471Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"The user is asking me to move a card...","thinkingSignature":"c2a2f355d04987bcf2946e5e577e078eea8a52fad6ce3090411d4534d2e2d050"},{"type":"toolCall","id":"call_function_h2qhff6fkoax_1","name":"exec","arguments":{"command":"curl -s http://192.168.7.45:17103/api/projects/devplanner/cards | jq '.[] | select(.slug == \"DE-16\")'"}
+}],"api":"anthropic-messages","provider":"opencode","model":"minimax-m2.5-free","usage":{"input":28,"output":167,"cacheRead":5869,"cacheWrite":10583,"totalTokens":16647,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":1771996735858}}
+```
+
+### toolResult message line (note: `toolCallId`, `toolName`, `isError` are top-level on `message`)
+```json
+{"type":"message","id":"e0f1c758","parentId":"dd433acd","timestamp":"2026-02-25T05:19:12.544Z","message":{"role":"toolResult","toolCallId":"call_function_h2qhff6fkoax_1","toolName":"exec","content":[{"type":"text","text":"jq: error (at <stdin>:0): Cannot index array with string \"slug\"\n\n(Command exited with code 5)"}],"details":{"status":"completed","exitCode":5,"durationMs":47,"aggregated":"jq: error...","cwd":"/Users/molt/.openclaw/workspace"},"isError":false,"timestamp":1771996752542}}
+```
+
+### Assistant message with interleaved thinking + text blocks (thinkingSignature = "reasoning")
+```json
+{"type":"message","id":"10c2de","parentId":"9dc55a93","timestamp":"2026-02-24T01:46:27.666Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"User wants PiDog to sit and then howl.","thinkingSignature":"reasoning"},{"type":"toolCall","id":"call_function_opvjn6nojhu5_1","name":"exec","arguments":{"command":"curl -X POST http://192.168.7.152:8000/api/v1/actions/execute -d '{\"actions\":[\"sit\",\"howl\"]}'"}
+}],"api":"openai-completions","provider":"opencode","model":"minimax-m2.5-free","usage":{"input":20391,"output":163,"cacheRead":1022,"cacheWrite":0,"totalTokens":21576,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":1771897572145}}
+```
+
+### Assistant message with stop reason "stop" and multiple content block types
+```json
+{"type":"message","id":"792b9914","parentId":"df2bdeb3","timestamp":"2026-02-25T05:19:47.535Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"I don't see DE-16 in either board.","thinkingSignature":"03db9dcf9c2b67d649841dba388fa5b82cbf3f6ad5e0eb7d77a4a2d38057d4ff"},{"type":"text","text":"I couldn't find a card with slug \"DE-16\" in either the **DevPlanner** or **Hex** boards.\n\nCould you clarify which board it belongs to?"}],"api":"anthropic-messages","provider":"opencode","model":"minimax-m2.5-free","usage":{"input":2651,"output":232,"cacheRead":16304,"cacheWrite":0,"totalTokens":19187,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1771996780527}}
+```
+
+### `sessions.json` top-level structure (single object, NOT an array)
+```json
+{
+  "agent:main:main": {
+    "sessionId": "ab9b55c4-f540-4587-ab94-72b63b29147c",
+    "updatedAt": 1773538952929,
+    "systemSent": true,
+    "abortedLastRun": false,
+    "chatType": "direct",
+    "deliveryContext": { "to": "heartbeat" },
+    "origin": { "label": "heartbeat", "provider": "heartbeat", "from": "heartbeat", "to": "heartbeat" },
+    "sessionFile": "/Users/molt/.openclaw/agents/main/sessions/ab9b55c4-f540-4587-ab94-72b63b29147c.jsonl",
+    "compactionCount": 0
+  }
+}
+```
+
+> **Parser implementation note:** Iterate with `Object.values(sessionsJson)` to get the `SessionMeta[]`. The agent name is the directory component of the path (`agents/<agentName>/sessions/`), not the key string.
