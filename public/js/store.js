@@ -14,6 +14,8 @@ export const store = {
   selectedIndices: new Set(),
   multiSelectMode: false,
   searchQuery: "",
+  /** @type {"date" | "size"} */
+  sessionSort: "date",
 };
 
 // ─── Importance ──────────────────────────────────────────────────
@@ -65,15 +67,20 @@ export function toggleSelected(lineIndex) {
   }
 }
 
-export function selectThinkingAndToolCalls() {
+export function selectThinking() {
   const indices = store.messages
-    .filter(
-      (m) =>
-        m.kind !== "system" &&
-        (m.hasThinking || m.hasToolCall || m.kind === "toolResult")
-    )
+    .filter((m) => m.kind !== "system" && m.hasThinking)
     .map((m) => m.lineIndex);
-  store.selectedIndices = new Set(indices);
+  store.selectedIndices = new Set([...store.selectedIndices, ...indices]);
+  store.multiSelectMode = store.selectedIndices.size > 0;
+}
+
+export function selectToolCalls() {
+  const indices = store.messages
+    .filter((m) => m.kind !== "system" && (m.hasToolCall || m.kind === "toolResult"))
+    .map((m) => m.lineIndex);
+  store.selectedIndices = new Set([...store.selectedIndices, ...indices]);
+  store.multiSelectMode = store.selectedIndices.size > 0;
 }
 
 export function selectAll() {

@@ -12,7 +12,8 @@ import {
   saveImportantToStorage,
   setSelected,
   toggleSelected,
-  selectThinkingAndToolCalls,
+  selectThinking,
+  selectToolCalls,
   selectAll,
   clearSelection,
 } from "./store.js";
@@ -62,6 +63,7 @@ function renderSessionList(sessions) {
     const li = renderSessionItem(item, isActive, loadSession);
     list.appendChild(li);
   }
+  window.lucide?.createIcons();
 }
 
 // ─── Message feed rendering ───────────────────────────────────────
@@ -91,6 +93,7 @@ function renderMessageFeed(messages) {
 
   updateMultiSelectVisuals();
   updateToolbarStats();
+  window.lucide?.createIcons();
 }
 
 // ─── Toolbar visibility ───────────────────────────────────────────
@@ -126,7 +129,13 @@ function applyFilter() {
           s.agentName.toLowerCase().includes(q) ||
           s.originLabel.toLowerCase().includes(q)
       )
-    : store.sessions;
+    : [...store.sessions];
+
+  if (store.sessionSort === "size") {
+    filtered.sort((a, b) => b.fileSizeBytes - a.fileSizeBytes);
+  }
+  // "date" order is already the default from the server (descending updatedAt)
+
   renderSessionList(filtered);
 }
 
@@ -136,14 +145,7 @@ async function loadSession(id) {
   store.activeSessionId = id;
   clearSelection();
   loadImportantFromStorage(id);
-  renderSessionList(
-    store.sessions.filter((s) =>
-      store.searchQuery
-        ? s.sessionId.toLowerCase().includes(store.searchQuery) ||
-          s.agentName.toLowerCase().includes(store.searchQuery)
-        : true
-    )
-  );
+  applyFilter();
   showToolbar(true);
 
   const feed = document.getElementById("message-feed");
@@ -185,6 +187,7 @@ function refreshCard(messageId) {
     onOpenDetail: openMessageModal,
   });
   card.replaceWith(newCard);
+  window.lucide?.createIcons();
 }
 
 // ─── Toggle select ────────────────────────────────────────────────
@@ -291,6 +294,7 @@ function openMessageModal(msg) {
   if (!modal) return;
   renderMessageDetail(msg);
   modal.hidden = false;
+  window.lucide?.createIcons();
   document.getElementById("modal-close")?.focus();
 }
 
@@ -305,8 +309,23 @@ async function init() {
   // Toolbar buttons
   document.getElementById("btn-refresh")?.addEventListener("click", loadSessionList);
 
+  function setSortMode(mode) {
+    store.sessionSort = mode;
+    document.getElementById("btn-sort-date")?.classList.toggle("is-active", mode === "date");
+    document.getElementById("btn-sort-size")?.classList.toggle("is-active", mode === "size");
+    applyFilter();
+  }
+  document.getElementById("btn-sort-date")?.addEventListener("click", () => setSortMode("date"));
+  document.getElementById("btn-sort-size")?.addEventListener("click", () => setSortMode("size"));
+
   document.getElementById("btn-select-thinking")?.addEventListener("click", () => {
-    selectThinkingAndToolCalls();
+    selectThinking();
+    updateAllCardSelections();
+    updateToolbarStats();
+  });
+
+  document.getElementById("btn-select-toolcalls")?.addEventListener("click", () => {
+    selectToolCalls();
     updateAllCardSelections();
     updateToolbarStats();
   });
@@ -342,6 +361,9 @@ async function init() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMessageModal();
   });
+
+  // Render static HTML icons (refresh, modal close, sort buttons)
+  window.lucide?.createIcons();
 
   // Initial load
   await loadSessionList();

@@ -1,11 +1,19 @@
 import { highlightJson } from "./highlight.js";
 import { isImportant, store } from "./store.js";
 
+// ─── Lucide icon helper ───────────────────────────────────────────
+function icon(name, cls = "") {
+  const i = document.createElement("i");
+  i.setAttribute("data-lucide", name);
+  i.className = `icon${cls ? " " + cls : ""}`;
+  return i;
+}
+
 const ROLE_ICONS = {
-  user:       "👤",
-  assistant:  "🤖",
-  toolResult: "🔧",
-  system:     "⚙️",
+  user:       "user",
+  assistant:  "bot",
+  toolResult: "wrench",
+  system:     "settings",
 };
 
 const ROLE_LABELS = {
@@ -59,7 +67,13 @@ function extractPreviewText(msg) {
 export function renderThinkingBlock(block) {
   const details = el("details", "block-details block-details--thinking");
   const summary = el("summary", "block-summary");
-  summary.innerHTML = `🧠 Thinking <span style="opacity:.5;font-weight:400;font-size:10px">(${block.thinking?.length ?? 0} chars)</span>`;
+  summary.appendChild(icon("brain"));
+  const thinkingLabel = document.createTextNode(` Thinking `);
+  summary.appendChild(thinkingLabel);
+  const charCount = document.createElement("span");
+  charCount.style.cssText = "opacity:.5;font-weight:400;font-size:10px";
+  charCount.textContent = `(${block.thinking?.length ?? 0} chars)`;
+  summary.appendChild(charCount);
   const content = el("div", "block-content");
   content.textContent = block.thinking ?? "";
   details.appendChild(summary);
@@ -72,7 +86,8 @@ export function renderThinkingBlock(block) {
 export function renderToolCallBlock(block) {
   const details = el("details", "block-details block-details--toolcall");
   const summary = el("summary", "block-summary");
-  summary.textContent = `⚡ Tool: ${block.name ?? "unknown"}`;
+  summary.appendChild(icon("zap"));
+  summary.appendChild(document.createTextNode(` Tool: ${block.name ?? "unknown"}`));
   const content = el("div", "block-content");
   try {
     const pretty = JSON.stringify(block.arguments, null, 2);
@@ -90,8 +105,9 @@ export function renderToolCallBlock(block) {
 export function renderToolResultBlock(msg) {
   const details = el("details", "block-details block-details--toolresult");
   const summary = el("summary", "block-summary");
-  const hasError = msg.isError ? " ⚠️" : "";
-  summary.textContent = `🔧 ${msg.toolName ?? "tool"}${hasError}`;
+  summary.appendChild(icon("wrench"));
+  summary.appendChild(document.createTextNode(` ${msg.toolName ?? "tool"}`));
+  if (msg.isError) { summary.appendChild(document.createTextNode(" ")); summary.appendChild(icon("triangle-alert")); }
   const content = el("div", "block-content");
   const text = msg.content.map((b) => b.text ?? "").join("\n").trim();
   content.textContent = text || "(no output)";
@@ -108,15 +124,15 @@ export function renderSystemEvent(msg) {
   li.dataset.msgId = msg.id;
 
   const header = el("div", "msg-card__header");
-  const icon = el("span", "msg-card__role-icon");
-  icon.textContent = "⚙️";
+  const roleIcon = el("span", "msg-card__role-icon");
+  roleIcon.appendChild(icon("settings"));
   const role = el("span", "msg-card__role");
   role.textContent = "System";
   const rawText = msg.content?.[0]?.text ?? JSON.stringify(msg.raw?.type ?? "");
   const label = el("span", "msg-card__timestamp");
   label.textContent = rawText + " — " + formatTimestamp(msg.timestamp);
 
-  header.appendChild(icon);
+  header.appendChild(roleIcon);
   header.appendChild(role);
   header.appendChild(label);
   li.appendChild(header);
@@ -136,9 +152,12 @@ export function renderMessage(msg, sessionId, callbacks) {
   const important = isImportant(msg.id);
   const selected = store.selectedIndices.has(msg.lineIndex);
 
+  const isThinkingOnly = msg.kind === "assistant" && msg.hasThinking &&
+    !msg.content.some(b => b.type === "text" && b.text?.trim().length > 0);
+
   const li = el(
     "li",
-    `msg-card msg-card--${msg.kind}${important ? " is-important" : ""}${selected ? " is-selected" : ""}`
+    `msg-card msg-card--${msg.kind}${isThinkingOnly ? " msg-card--thinking-only" : ""}${important ? " is-important" : ""}${selected ? " is-selected" : ""}`
   );
   li.dataset.lineIndex = msg.lineIndex;
   li.dataset.msgId = msg.id;
@@ -158,7 +177,7 @@ export function renderMessage(msg, sessionId, callbacks) {
   });
 
   const roleIcon = el("span", "msg-card__role-icon");
-  roleIcon.textContent = ROLE_ICONS[msg.kind] ?? "❓";
+  roleIcon.appendChild(icon(ROLE_ICONS[msg.kind] ?? "help-circle"));
 
   const roleLabel = el("span", "msg-card__role");
   roleLabel.textContent = ROLE_LABELS[msg.kind] ?? msg.kind;
@@ -188,7 +207,7 @@ export function renderMessage(msg, sessionId, callbacks) {
   const actions = el("div", "msg-card__actions");
 
   const starBtn = el("button", `action-btn${important ? " is-important" : ""}`);
-  starBtn.textContent = important ? "⭐" : "☆";
+  starBtn.appendChild(icon("star"));
   starBtn.title = important ? "Unmark important" : "Mark as important";
   starBtn.setAttribute("aria-label", important ? "Unmark important" : "Mark as important");
   starBtn.addEventListener("click", (e) => {
@@ -197,7 +216,7 @@ export function renderMessage(msg, sessionId, callbacks) {
   });
 
   const copyBtn = el("button", "action-btn");
-  copyBtn.textContent = "📋";
+  copyBtn.appendChild(icon("clipboard"));
   copyBtn.title = "Copy text";
   copyBtn.setAttribute("aria-label", "Copy message text");
   copyBtn.addEventListener("click", (e) => {
@@ -207,12 +226,18 @@ export function renderMessage(msg, sessionId, callbacks) {
       .map((b) => b.text ?? "")
       .join("\n");
     navigator.clipboard?.writeText(text).catch(() => {});
-    copyBtn.textContent = "✓";
-    setTimeout(() => (copyBtn.textContent = "📋"), 1200);
+    copyBtn.innerHTML = "";
+    copyBtn.appendChild(icon("check"));
+    window.lucide?.createIcons();
+    setTimeout(() => {
+      copyBtn.innerHTML = "";
+      copyBtn.appendChild(icon("clipboard"));
+      window.lucide?.createIcons();
+    }, 1200);
   });
 
   const delBtn = el("button", "action-btn");
-  delBtn.textContent = "🗑";
+  delBtn.appendChild(icon("trash-2"));
   delBtn.title = "Delete message";
   delBtn.setAttribute("aria-label", "Delete message");
   if (important) delBtn.setAttribute("disabled", "true");
@@ -221,6 +246,16 @@ export function renderMessage(msg, sessionId, callbacks) {
     if (!important) callbacks.onDelete([msg.lineIndex]);
   });
 
+  const viewBtn = el("button", "action-btn");
+  viewBtn.appendChild(icon("eye"));
+  viewBtn.title = "View details";
+  viewBtn.setAttribute("aria-label", "View message details");
+  viewBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    callbacks.onOpenDetail(msg);
+  });
+
+  actions.appendChild(viewBtn);
   actions.appendChild(starBtn);
   actions.appendChild(copyBtn);
   actions.appendChild(delBtn);
@@ -247,10 +282,8 @@ export function renderMessage(msg, sessionId, callbacks) {
     preview.appendChild(more);
   }
 
-  // Click on header or preview → open detail modal
-  const openDetail = () => callbacks.onOpenDetail(msg);
-  header.addEventListener("click", openDetail);
-  preview.addEventListener("click", openDetail);
+  // Click on card → toggle selection
+  li.addEventListener("click", () => callbacks.onToggleSelect(msg.lineIndex));
 
   li.appendChild(header);
   li.appendChild(preview);
@@ -289,9 +322,13 @@ export function renderSessionItem(item, isActive, onSelect) {
   const time = el("span", "session-item__time");
   time.textContent = item.updatedAtLabel;
 
+  const size = el("span", "session-item__size");
+  size.textContent = item.fileSizeLabel ?? "";
+
   meta.appendChild(badge);
   meta.appendChild(origin);
   meta.appendChild(time);
+  meta.appendChild(size);
 
   li.appendChild(agent);
   li.appendChild(id);
@@ -326,7 +363,10 @@ export function renderMessageDetail(msg) {
   const title = document.getElementById("modal-title");
   if (!body || !title) return;
 
-  title.textContent = `${ROLE_ICONS[msg.kind] ?? ""} ${ROLE_LABELS[msg.kind] ?? msg.kind} — ${formatTimestamp(msg.timestamp)}`;
+  title.innerHTML = "";
+  const titleIcon = icon(ROLE_ICONS[msg.kind] ?? "help-circle");
+  title.appendChild(titleIcon);
+  title.appendChild(document.createTextNode(` ${ROLE_LABELS[msg.kind] ?? msg.kind} — ${formatTimestamp(msg.timestamp)}`));
   body.innerHTML = "";
 
   // ── Metadata section ──

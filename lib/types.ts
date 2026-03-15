@@ -68,6 +68,8 @@ export interface SessionListItem {
   chatType: string;
   originLabel: string;
   messageCount: number;
+  fileSizeBytes: number;
+  fileSizeLabel: string;
 }
 
 export type SessionListResponse = SessionListItem[];

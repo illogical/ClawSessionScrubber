@@ -27,6 +27,12 @@ async function countLines(filePath: string): Promise<number> {
   }
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}b`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}kb`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}mb`;
+}
+
 function agentNameFromPath(sessionsJsonPath: string): string {
   // path: .../agents/<agentName>/sessions/sessions.json
   const parts = sessionsJsonPath.split("/");
@@ -65,6 +71,8 @@ export async function buildSessionIndex(dataDir: string): Promise<SessionListIte
         } else {
           logger.info("Indexed session from sessions.json", { sessionId: meta.sessionId, filePath });
         }
+        let fileSizeBytes = 0;
+        try { fileSizeBytes = (await stat(filePath)).size; } catch { /* ignore */ }
         items.push({
           sessionId: meta.sessionId,
           agentName,
@@ -74,6 +82,8 @@ export async function buildSessionIndex(dataDir: string): Promise<SessionListIte
           chatType: meta.chatType ?? "direct",
           originLabel: meta.origin?.label ?? "",
           messageCount: await countLines(filePath),
+          fileSizeBytes,
+          fileSizeLabel: formatFileSize(fileSizeBytes),
         });
       }
     } catch (e) {
@@ -105,6 +115,8 @@ export async function buildSessionIndex(dataDir: string): Promise<SessionListIte
           chatType: "direct",
           originLabel: "",
           messageCount: await countLines(filePath),
+          fileSizeBytes: s.size,
+          fileSizeLabel: formatFileSize(s.size),
         });
       } catch {
         // skip unreadable
