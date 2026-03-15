@@ -11,8 +11,8 @@
   /* Role colours */
   --user-border:       #4A9EFF;
   --user-bg:           rgba(74, 158, 255, 0.07);
-  --assistant-border:  #4DCEA0;
-  --assistant-bg:      rgba(77, 206, 160, 0.07);
+  --assistant-border:  #818CF8;
+  --assistant-bg:      rgba(129, 140, 248, 0.07);
   --tool-result-border:#B57BFF;
   --tool-result-bg:    rgba(181, 123, 255, 0.07);
   --thinking-border:   var(--accent-3);
@@ -465,7 +465,10 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
   text-transform: uppercase;
   letter-spacing: 0.6px;
   flex-shrink: 0;
+  cursor: pointer;
 }
+.msg-card__role:hover { opacity: 0.8; }
+.msg-card__preview { cursor: pointer; }
 
 .msg-card--user       .msg-card__role { color: var(--user-border); }
 .msg-card--assistant  .msg-card__role { color: var(--assistant-border); }
@@ -506,6 +509,18 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
   background: rgba(220, 38, 38, 0.2);
   color: #FF7B7B;
 }
+/* size-md: 2–50 KB — subtle gray, informational */
+.flag-chip--size-md {
+  background: rgba(255,255,255,0.07);
+  color: var(--text2);
+  font-weight: 500;
+  opacity: 0.75;
+}
+/* size-lg: 50 KB+ — red, clearly distinct from tool-call gold */
+.flag-chip--size-lg {
+  background: rgba(220, 38, 38, 0.2);
+  color: #FC8181;
+}
 
 .msg-card__actions {
   display: flex;
@@ -528,6 +543,10 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
 .action-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
 .action-btn.is-important { color: var(--accent-1); }
 .action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Larger view (eye) button */
+.action-btn[aria-label="View message details"] .icon { width: 18px; height: 18px; }
+.action-btn[aria-label="View message details"] { color: var(--text); padding: 3px 7px; }
 
 /* ─── Message Preview (card body) ───────────────────────────────── */
 .msg-card__preview {
@@ -717,6 +736,30 @@ details[open] > .block-summary::before {
 
 .modal__section {
   margin-bottom: 16px;
+}
+
+.content-clip-notice {
+  margin-top: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px dashed rgba(255,255,255,0.12);
+  font-size: 11px;
+  color: var(--text2);
+  font-style: italic;
+}
+
+.modal__download-footer {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 12px 0 4px;
+  margin-top: 4px;
+}
+
+.modal__download-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
 }
 
 .modal__section-title {

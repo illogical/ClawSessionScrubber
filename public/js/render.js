@@ -62,9 +62,23 @@ function extractPreviewText(msg) {
   return text;
 }
 
+// ─── Content truncation ───────────────────────────────────────────
+
+const PREVIEW_LINES = 400;
+
+/**
+ * Truncate text to at most maxLines newline-separated lines.
+ * @returns {{ preview: string, clipped: boolean, totalLines: number }}
+ */
+function truncateLines(text, maxLines = PREVIEW_LINES) {
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) return { preview: text, clipped: false, totalLines: lines.length };
+  return { preview: lines.slice(0, maxLines).join("\n"), clipped: true, totalLines: lines.length };
+}
+
 // ─── Thinking block ───────────────────────────────────────────────
 
-export function renderThinkingBlock(block) {
+export function renderThinkingBlock(block, maxLines = Infinity) {
   const details = el("details", "block-details block-details--thinking");
   const summary = el("summary", "block-summary");
   summary.appendChild(icon("brain"));
@@ -75,42 +89,65 @@ export function renderThinkingBlock(block) {
   charCount.textContent = `(${block.thinking?.length ?? 0} chars)`;
   summary.appendChild(charCount);
   const content = el("div", "block-content");
-  content.textContent = block.thinking ?? "";
+  const { preview, clipped, totalLines } = truncateLines(block.thinking ?? "", maxLines);
+  content.textContent = preview;
+  if (clipped) {
+    const note = el("div", "content-clip-notice");
+    note.textContent = `… truncated at ${maxLines} of ${totalLines} lines`;
+    content.appendChild(note);
+  }
   details.appendChild(summary);
   details.appendChild(content);
+  details.dataset.clipped = clipped ? "1" : "0";
   return details;
 }
 
 // ─── Tool call block ──────────────────────────────────────────────
 
-export function renderToolCallBlock(block) {
+export function renderToolCallBlock(block, maxLines = Infinity) {
   const details = el("details", "block-details block-details--toolcall");
   const summary = el("summary", "block-summary");
   summary.appendChild(icon("zap"));
   summary.appendChild(document.createTextNode(` Tool: ${block.name ?? "unknown"}`));
   const content = el("div", "block-content");
+  let clipped = false;
   try {
     const pretty = JSON.stringify(block.arguments, null, 2);
-    content.innerHTML = highlightJson(pretty);
+    const truncated = truncateLines(pretty, maxLines);
+    clipped = truncated.clipped;
+    content.innerHTML = highlightJson(truncated.preview);
+    if (clipped) {
+      const note = el("div", "content-clip-notice");
+      note.textContent = `… truncated at ${maxLines} of ${truncated.totalLines} lines`;
+      content.appendChild(note);
+    }
   } catch {
     content.textContent = String(block.arguments);
   }
   details.appendChild(summary);
   details.appendChild(content);
+  details.dataset.clipped = clipped ? "1" : "0";
   return details;
 }
 
 // ─── Tool result block ────────────────────────────────────────────
 
-export function renderToolResultBlock(msg) {
+export function renderToolResultBlock(msg, maxLines = Infinity) {
   const details = el("details", "block-details block-details--toolresult");
   const summary = el("summary", "block-summary");
   summary.appendChild(icon("wrench"));
   summary.appendChild(document.createTextNode(` ${msg.toolName ?? "tool"}`));
   if (msg.isError) { summary.appendChild(document.createTextNode(" ")); summary.appendChild(icon("triangle-alert")); }
   const content = el("div", "block-content");
-  const text = msg.content.map((b) => b.text ?? "").join("\n").trim();
-  content.textContent = text || "(no output)";
+  const fullText = msg.content.map((b) => b.text ?? "").join("\n").trim();
+  const { preview, clipped, totalLines } = truncateLines(fullText || "(no output)", maxLines);
+  content.textContent = preview;
+  if (clipped) {
+    const note = el("div", "content-clip-notice");
+    note.textContent = `… truncated at ${maxLines} of ${totalLines} lines`;
+    content.appendChild(note);
+  }
+  details.dataset.clipped = clipped ? "1" : "0";
   details.appendChild(summary);
   details.appendChild(content);
   return details;
@@ -181,6 +218,7 @@ export function renderMessage(msg, sessionId, callbacks) {
 
   const roleLabel = el("span", "msg-card__role");
   roleLabel.textContent = ROLE_LABELS[msg.kind] ?? msg.kind;
+  roleLabel.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onOpenDetail(msg); });
 
   const ts = el("span", "msg-card__timestamp");
   ts.textContent = formatTimestamp(msg.timestamp);
@@ -201,6 +239,14 @@ export function renderMessage(msg, sessionId, callbacks) {
     const chip = el("span", "flag-chip flag-chip--error");
     chip.textContent = "Error";
     flags.appendChild(chip);
+  }
+  if (msg.rawSize >= 2048) {
+    const kb = (msg.rawSize / 1024).toFixed(msg.rawSize < 10240 ? 1 : 0);
+    const sizeTier = msg.rawSize >= 51200 ? "lg" : "md";
+    const sizeChip = el("span", `flag-chip flag-chip--size-${sizeTier}`);
+    sizeChip.textContent = `${kb}kb`;
+    sizeChip.title = `Raw message size: ${kb}kb`;
+    flags.appendChild(sizeChip);
   }
 
   // Action buttons
@@ -273,14 +319,7 @@ export function renderMessage(msg, sessionId, callbacks) {
   const previewP = el("p");
   previewP.textContent = previewText.slice(0, 300);
   preview.appendChild(previewP);
-
-  const hasMore =
-    previewText.length > 300 || msg.hasThinking || msg.hasToolCall || msg.kind === "toolResult";
-  if (hasMore) {
-    const more = el("div", "preview-more");
-    more.textContent = "Click to expand…";
-    preview.appendChild(more);
-  }
+  preview.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onOpenDetail(msg); });
 
   // Click on card → toggle selection
   li.addEventListener("click", () => callbacks.onToggleSelect(msg.lineIndex));
@@ -419,25 +458,60 @@ export function renderMessageDetail(msg) {
   contentTitle.textContent = "Content";
   contentSection.appendChild(contentTitle);
 
+  let anyClipped = false;
+
   if (msg.kind === "toolResult") {
-    const resultBlock = renderToolResultBlock(msg);
+    const resultBlock = renderToolResultBlock(msg, PREVIEW_LINES);
     resultBlock.setAttribute("open", "");
+    if (resultBlock.dataset.clipped === "1") anyClipped = true;
     contentSection.appendChild(resultBlock);
   } else {
     for (const block of msg.content) {
       if (block.type === "thinking") {
-        contentSection.appendChild(renderThinkingBlock(block));
+        const tb = renderThinkingBlock(block, PREVIEW_LINES);
+        if (tb.dataset.clipped === "1") anyClipped = true;
+        contentSection.appendChild(tb);
       } else if (block.type === "toolCall") {
-        const tcBlock = renderToolCallBlock(block);
+        const tcBlock = renderToolCallBlock(block, PREVIEW_LINES);
+        if (tcBlock.dataset.clipped === "1") anyClipped = true;
         tcBlock.setAttribute("open", "");
         contentSection.appendChild(tcBlock);
       } else if (block.type === "text" && block.text) {
+        const { preview, clipped, totalLines } = truncateLines(block.text, PREVIEW_LINES);
+        if (clipped) anyClipped = true;
         const textDiv = el("div", "modal__full-text");
-        textDiv.textContent = block.text;
+        textDiv.textContent = preview;
+        if (clipped) {
+          const note = el("div", "content-clip-notice");
+          note.textContent = `… truncated at ${PREVIEW_LINES} of ${totalLines} lines`;
+          textDiv.appendChild(note);
+        }
         contentSection.appendChild(textDiv);
       }
     }
   }
 
   body.appendChild(contentSection);
+
+  // ── Download footer (shown when content was clipped) ──
+  if (anyClipped) {
+    const footer = el("div", "modal__download-footer");
+    const ts = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+    const filename = `msg-${msg.id.slice(0, 8)}-${ts}.json`;
+    const downloadBtn = el("button", "btn btn--secondary modal__download-btn");
+    downloadBtn.appendChild(icon("download"));
+    downloadBtn.appendChild(document.createTextNode(` Download full message — ${filename}`));
+    downloadBtn.addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify(msg.raw, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    footer.appendChild(downloadBtn);
+    body.appendChild(footer);
+    window.lucide?.createIcons();
+  }
 }

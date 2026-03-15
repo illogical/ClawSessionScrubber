@@ -236,7 +236,7 @@ async function handleDeleteMessages(lineIndices) {
   try {
     const result = await deleteMessages(store.activeSessionId, safe);
     showToast(`Deleted ${result.deleted} message(s).`, "success");
-    await loadSession(store.activeSessionId);
+    await Promise.all([loadSession(store.activeSessionId), loadSessionList()]);
   } catch (e) {
     showToast(`Delete failed: ${e.message}`, "error");
   }

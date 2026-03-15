@@ -73,6 +73,7 @@ export function parseSession(fileContent: string): ParsedMessage[] {
         content: [{ type: "text", text: `[${type}]` }],
         hasThinking: false,
         hasToolCall: false,
+        rawSize: line.length,
         raw: obj,
       });
       continue;
@@ -96,6 +97,7 @@ export function parseSession(fileContent: string): ParsedMessage[] {
       content,
       hasThinking,
       hasToolCall,
+      rawSize: line.length,
       raw: obj,
     };
 

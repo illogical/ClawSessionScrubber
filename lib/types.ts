@@ -20,6 +20,7 @@ export interface ParsedMessage {
   content: ContentBlock[];
   hasThinking: boolean;
   hasToolCall: boolean;
+  rawSize: number;
   meta?: {
     model?: string;
     provider?: string;
