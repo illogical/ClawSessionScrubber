@@ -1,4 +1,5 @@
 import type { ParsedMessage, ContentBlock } from "./types.ts";
+import { logger } from "./logger.ts";
 
 function roleToKind(role: string): ParsedMessage["kind"] {
   switch (role) {
@@ -51,7 +52,8 @@ export function parseSession(fileContent: string): ParsedMessage[] {
     let obj: Record<string, unknown>;
     try {
       obj = JSON.parse(line);
-    } catch {
+    } catch (e) {
+      logger.warn("Skipping unparseable JSONL line", { lineIndex, error: (e as Error).message, preview: line.slice(0, 80) });
       continue;
     }
 

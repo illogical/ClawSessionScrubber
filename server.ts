@@ -3,6 +3,7 @@ import { join, extname } from "node:path";
 import { parseSession } from "./lib/parseSession.ts";
 import { buildSessionIndex, resolveSessionFile } from "./lib/sessionIndex.ts";
 import { writeMemory } from "./lib/memoryWriter.ts";
+import { logger } from "./lib/logger.ts";
 import type { DeleteResponse, MemoryExportMessage, MemoryResponse } from "./lib/types.ts";
 
 const DATA_DIR =
@@ -39,18 +40,29 @@ function err(message: string, status: number): Response {
 // --- Handlers ---
 
 async function handleListSessions(): Promise<Response> {
-  const items = await buildSessionIndex(DATA_DIR);
-  return json(items);
+  try {
+    const items = await buildSessionIndex(DATA_DIR);
+    logger.info("Session list loaded", { count: items.length });
+    return json(items);
+  } catch (e) {
+    logger.error("Failed to build session index", e, { dataDir: DATA_DIR });
+    return err("Failed to load sessions", 500);
+  }
 }
 
 async function handleGetSession(sessionId: string): Promise<Response> {
   const filePath = await resolveSessionFile(DATA_DIR, sessionId);
-  if (!filePath) return err("Session not found", 404);
+  if (!filePath) {
+    logger.warn("Session not found", { sessionId });
+    return err("Session not found", 404);
+  }
   try {
     const content = await readFile(filePath, "utf8");
     const messages = parseSession(content);
+    logger.info("Session loaded", { sessionId, filePath, messageCount: messages.length });
     return json(messages);
-  } catch {
+  } catch (e) {
+    logger.error("Failed to read/parse session file", e, { sessionId, filePath });
     return err("Failed to read session file", 500);
   }
 }
@@ -62,7 +74,8 @@ async function handleDeleteMessages(
   let body: { lineIndices?: number[] };
   try {
     body = (await req.json()) as { lineIndices?: number[] };
-  } catch {
+  } catch (e) {
+    logger.warn("Invalid JSON body in delete request", { sessionId });
     return err("Invalid JSON body", 400);
   }
 
@@ -75,12 +88,16 @@ async function handleDeleteMessages(
   }
 
   const filePath = await resolveSessionFile(DATA_DIR, sessionId);
-  if (!filePath) return err("Session not found", 404);
+  if (!filePath) {
+    logger.warn("Session not found for delete", { sessionId });
+    return err("Session not found", 404);
+  }
 
   let content: string;
   try {
     content = await readFile(filePath, "utf8");
-  } catch {
+  } catch (e) {
+    logger.error("Failed to read session file for delete", e, { sessionId, filePath });
     return err("Failed to read session file", 500);
   }
 
@@ -102,10 +119,12 @@ async function handleDeleteMessages(
   const newLines = lines.filter((_, i) => !linesToRemove.has(i));
   try {
     await writeFile(filePath, newLines.join("\n"), "utf8");
-  } catch {
+  } catch (e) {
+    logger.error("Failed to write session file after delete", e, { sessionId, filePath });
     return err("Failed to write session file", 500);
   }
 
+  logger.info("Messages deleted", { sessionId, deleted: linesToRemove.size });
   return json({ deleted: linesToRemove.size } satisfies DeleteResponse);
 }
 
@@ -123,8 +142,10 @@ async function handleExportMemory(req: Request): Promise<Response> {
 
   try {
     const path = await writeMemory(DATA_DIR, body.messages, body.date);
+    logger.info("Memory exported", { path, messageCount: body.messages.length });
     return json({ path } satisfies MemoryResponse);
   } catch (e) {
+    logger.error("Failed to export memory", e);
     return err((e as Error).message, 500);
   }
 }
@@ -152,6 +173,10 @@ async function router(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const { pathname } = url;
   const method = req.method;
+
+  if (pathname.startsWith("/api/")) {
+    logger.info(`${method} ${pathname}`);
+  }
 
   // API routes
   if (pathname === "/api/sessions" && method === "GET") {

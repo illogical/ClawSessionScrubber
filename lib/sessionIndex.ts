@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, basename } from "node:path";
 import type { SessionListItem, SessionMeta } from "./types.ts";
+import { logger } from "./logger.ts";
 
 function formatRelativeTime(ms: number): string {
   const diff = Date.now() - ms;
@@ -56,7 +57,14 @@ export async function buildSessionIndex(dataDir: string): Promise<SessionListIte
       for (const meta of Object.values(obj)) {
         if (!meta.sessionId || seen.has(meta.sessionId)) continue;
         seen.add(meta.sessionId);
-        const filePath = meta.sessionFile;
+        // sessionFile may be an absolute path from a different machine — resolve
+        // it relative to the local sessionsDir using only the filename.
+        const filePath = join(sessionsDir, basename(meta.sessionFile));
+        if (filePath !== meta.sessionFile) {
+          logger.info("Remapped sessionFile to local path", { sessionId: meta.sessionId, original: meta.sessionFile, resolved: filePath });
+        } else {
+          logger.info("Indexed session from sessions.json", { sessionId: meta.sessionId, filePath });
+        }
         items.push({
           sessionId: meta.sessionId,
           agentName,
@@ -68,8 +76,8 @@ export async function buildSessionIndex(dataDir: string): Promise<SessionListIte
           messageCount: await countLines(filePath),
         });
       }
-    } catch {
-      // missing or malformed sessions.json — fall through to glob scan below
+    } catch (e) {
+      logger.warn("Could not read sessions.json, falling back to file scan", { path: sessionsJsonPath, error: (e as Error).message });
     }
 
     // Phase 2: also pick up loose .jsonl files in this agent's sessions dir
@@ -115,5 +123,10 @@ export async function resolveSessionFile(
 ): Promise<string | null> {
   const sessions = await buildSessionIndex(dataDir);
   const found = sessions.find((s) => s.sessionId === sessionId);
-  return found?.filePath ?? null;
+  if (!found) {
+    logger.warn("resolveSessionFile: no match in index", { sessionId, indexSize: sessions.length });
+    return null;
+  }
+  logger.info("resolveSessionFile: resolved", { sessionId, filePath: found.filePath });
+  return found.filePath;
 }
