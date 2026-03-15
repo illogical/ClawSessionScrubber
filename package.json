@@ -1,0 +1,11 @@
+{
+  "name": "claw-session-scrubber",
+  "version": "0.1.0",
+  "description": "Session history reviewer and cleanup tool for OpenClaw agents",
+  "scripts": {
+    "start": "bun run server.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}
