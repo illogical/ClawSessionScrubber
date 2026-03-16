@@ -262,6 +262,15 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
 .session-item__time {
   margin-left: auto;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.session-item__date {
+  font-size: 10px;
+  color: var(--text2);
 }
 
 .session-item__size {
@@ -414,7 +423,7 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
 
 /* role-specific borders & backgrounds */
 .msg-card--user       { border-left: none; border-right: 3px solid var(--user-border); margin-left: 12%; background-color: var(--user-bg); }
-.msg-card--assistant  { border-left-color: var(--assistant-border);  background-color: var(--assistant-bg); }
+.msg-card--assistant  { border-left-color: var(--assistant-border);  background-color: var(--assistant-bg); margin-right: 12%; }
 .msg-card--thinking-only { border-left-color: var(--thinking-border); background-color: rgba(246, 152, 11, 0.06); }
 .msg-card--toolResult { border-left-color: var(--tool-result-border); background-color: var(--tool-result-bg); }
 .msg-card--system     { border-left-color: var(--system-border);     background-color: transparent; }

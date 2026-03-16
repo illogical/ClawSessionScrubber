@@ -359,7 +359,12 @@ export function renderSessionItem(item, isActive, onSelect) {
   origin.textContent = item.originLabel || item.chatType;
 
   const time = el("span", "session-item__time");
-  time.textContent = item.updatedAtLabel;
+  const timeRelative = el("span");
+  timeRelative.textContent = item.updatedAtLabel;
+  const timeDate = el("span", "session-item__date");
+  timeDate.textContent = new Date(item.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  time.appendChild(timeRelative);
+  time.appendChild(timeDate);
 
   const size = el("span", "session-item__size");
   size.textContent = item.fileSizeLabel ?? "";
