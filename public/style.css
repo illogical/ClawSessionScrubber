@@ -11,12 +11,12 @@
   /* Role colours */
   --user-border:       #4A9EFF;
   --user-bg:           rgba(74, 158, 255, 0.07);
-  --assistant-border:  #818CF8;
-  --assistant-bg:      rgba(129, 140, 248, 0.07);
+  --assistant-border:  #F6980B;
+  --assistant-bg:      rgba(246, 152, 11, 0.07);
   --tool-result-border:#B57BFF;
   --tool-result-bg:    rgba(181, 123, 255, 0.07);
-  --thinking-border:   var(--accent-3);
-  --thinking-bg:       rgba(246, 152, 11, 0.08);
+  --thinking-border:   #4A9EFF;
+  --thinking-bg:       rgba(74, 158, 255, 0.07);
   --tool-call-border:  var(--accent-1);
   --tool-call-bg:      rgba(255, 198, 0, 0.07);
   --system-border:     #555;
@@ -262,15 +262,6 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
 .session-item__time {
   margin-left: auto;
   white-space: nowrap;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-}
-
-.session-item__date {
-  font-size: 10px;
-  color: var(--text2);
 }
 
 .session-item__size {
@@ -398,6 +389,17 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
   margin: 0 auto;
 }
 
+/* ─── Parent-child connector ────────────────────────────────────── */
+.msg-connector {
+  width: 2px;
+  height: 8px;
+  margin: -4px 0 -4px 22px;
+  background: rgba(157, 254, 254, 0.15);
+  border-radius: 1px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
 /* ─── Message Card ───────────────────────────────────────────────── */
 .msg-card {
   background: var(--fg);
@@ -424,7 +426,7 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
 /* role-specific borders & backgrounds */
 .msg-card--user       { border-left: none; border-right: 3px solid var(--user-border); margin-left: 12%; background-color: var(--user-bg); }
 .msg-card--assistant  { border-left-color: var(--assistant-border);  background-color: var(--assistant-bg); margin-right: 12%; }
-.msg-card--thinking-only { border-left-color: var(--thinking-border); background-color: rgba(246, 152, 11, 0.06); }
+.msg-card--thinking-only { border-left-color: var(--thinking-border); background-color: rgba(74, 158, 255, 0.06); }
 .msg-card--toolResult { border-left-color: var(--tool-result-border); background-color: var(--tool-result-bg); }
 .msg-card--system     { border-left-color: var(--system-border);     background-color: transparent; }
 
@@ -507,8 +509,8 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
 }
 
 .flag-chip--thinking {
-  background: rgba(246, 152, 11, 0.2);
-  color: var(--accent-3);
+  background: rgba(74, 158, 255, 0.2);
+  color: #4A9EFF;
 }
 .flag-chip--toolcall {
   background: rgba(255, 198, 0, 0.15);
@@ -628,11 +630,11 @@ details[open] > .block-summary::before {
 }
 
 .block-details--thinking {
-  border-color: rgba(246, 152, 11, 0.2);
+  border-color: rgba(74, 158, 255, 0.2);
   background: var(--thinking-bg);
 }
 .block-details--thinking .block-summary {
-  color: var(--accent-3);
+  color: #4A9EFF;
 }
 
 .block-details--toolcall {

@@ -27,7 +27,9 @@ function formatTimestamp(ts) {
   if (!ts) return "";
   try {
     const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return `${date} ${time}`;
   } catch {
     return ts;
   }
@@ -159,6 +161,7 @@ export function renderSystemEvent(msg) {
   const li = el("li", `msg-card msg-card--system`);
   li.dataset.lineIndex = msg.lineIndex;
   li.dataset.msgId = msg.id;
+  if (msg.parentId) li.dataset.parentId = msg.parentId;
 
   const header = el("div", "msg-card__header");
   const roleIcon = el("span", "msg-card__role-icon");
@@ -198,6 +201,7 @@ export function renderMessage(msg, sessionId, callbacks) {
   );
   li.dataset.lineIndex = msg.lineIndex;
   li.dataset.msgId = msg.id;
+  if (msg.parentId) li.dataset.parentId = msg.parentId;
 
   // ── Header ──
   const header = el("div", "msg-card__header");
@@ -361,10 +365,7 @@ export function renderSessionItem(item, isActive, onSelect) {
   const time = el("span", "session-item__time");
   const timeRelative = el("span");
   timeRelative.textContent = item.updatedAtLabel;
-  const timeDate = el("span", "session-item__date");
-  timeDate.textContent = new Date(item.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   time.appendChild(timeRelative);
-  time.appendChild(timeDate);
 
   const size = el("span", "session-item__size");
   size.textContent = item.fileSizeLabel ?? "";
