@@ -91,19 +91,6 @@ function renderMessageFeed(messages) {
     feed.appendChild(card);
   }
 
-  // Draw connectors between sequential parent-child messages
-  const cards = Array.from(feed.querySelectorAll("[data-msg-id]"));
-  const idToCard = {};
-  for (const card of cards) idToCard[card.dataset.msgId] = card;
-  for (let i = 1; i < cards.length; i++) {
-    const parentId = cards[i].dataset.parentId;
-    if (parentId && idToCard[parentId] === cards[i - 1]) {
-      const connector = document.createElement("div");
-      connector.className = "msg-connector";
-      feed.insertBefore(connector, cards[i]);
-    }
-  }
-
   updateMultiSelectVisuals();
   updateToolbarStats();
   window.lucide?.createIcons();

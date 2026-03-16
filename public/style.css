@@ -389,17 +389,6 @@ pre, code { font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospa
   margin: 0 auto;
 }
 
-/* ─── Parent-child connector ────────────────────────────────────── */
-.msg-connector {
-  width: 2px;
-  height: 8px;
-  margin: -4px 0 -4px 22px;
-  background: rgba(157, 254, 254, 0.15);
-  border-radius: 1px;
-  flex-shrink: 0;
-  pointer-events: none;
-}
-
 /* ─── Message Card ───────────────────────────────────────────────── */
 .msg-card {
   background: var(--fg);
